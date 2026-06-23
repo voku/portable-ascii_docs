@@ -1,0 +1,6 @@
+{
+  "name": "Portable ASCII",
+  "description": "An interactive, highly polished developer showcase and live playground for the voku/portable-ascii PHP library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
