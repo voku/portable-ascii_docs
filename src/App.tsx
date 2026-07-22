@@ -23,14 +23,14 @@ const COMMON_OPERATIONS: Record<string, CodeSnippet> = {
   to_ascii: {
     title: "Convert to ASCII",
     methodName: "ASCII::to_ascii()",
-    description: "Convert multilingual string inputs into clean, printable ASCII. Translates accents, non-latin glyphs, and language-specific ligatures.",
+    description: "Converts supported characters using deterministic language-specific replacement maps. Unsupported characters are removed by default. Enable $use_transliterate or call ASCII::to_transliterate() when broader fallback transliteration is required.",
     code: `<?php
 
 declare(strict_types=1);
 
 use voku\\helper\\ASCII;
 
-// Standard transliteration
+// Default ASCII conversion
 echo ASCII::to_ascii('déjà σσς iıii');
 // Output: "deja sss iiii"
 
@@ -55,7 +55,7 @@ echo ASCII::to_slugify('Fußgängerübergänge in Düsseldorf', '-', 'de');
   to_filename: {
     title: "Filesystem Filenames",
     methodName: "ASCII::to_filename()",
-    description: "Normalize filenames into a restricted ASCII-friendly shape by converting accents and removing problematic OS reserved characters.",
+    description: "Creates a restricted ASCII filename candidate. Applications must still enforce platform-specific reserved names, allowed extensions, maximum length, collision handling, and storage-path policy.",
     code: `<?php
 
 declare(strict_types=1);
@@ -84,7 +84,7 @@ echo ASCII::normalize_msword($input);
   remove_invisible: {
     title: "Remove Invisible Characters",
     methodName: "ASCII::remove_invisible_characters()",
-    description: "Purge unprintable ASCII control characters, hidden NULL bytes, and zero-width spaces that disrupt validation.",
+    description: "Removes null bytes and selected ASCII control characters by default. Pass $keep_basic_control_characters = false for broader Unicode control and format-character cleanup, and $url_encoded = true to process encoded control bytes such as %00.",
     code: `<?php
 
 declare(strict_types=1);
@@ -150,7 +150,7 @@ const API_REFERENCE: ApiReferenceRow[] = [
   {
     name: "to_filename",
     signature: "ASCII::to_filename(string $str, bool $use_transliterate = true, string $fallback_char = '-'): string",
-    purpose: "Normalizes filenames into restricted ASCII-friendly shapes suitable for filesystems.",
+    purpose: "Creates a restricted ASCII filename candidate. Applications must still enforce platform-specific reserved names, allowed extensions, maximum length, collision handling, and storage-path policy.",
     parameters: [
       { name: "$str", type: "string", desc: "Input name or title." },
       { name: "$use_transliterate", type: "bool", desc: "Whether to run standard transliterations first." },
@@ -159,16 +159,21 @@ const API_REFERENCE: ApiReferenceRow[] = [
   },
   {
     name: "clean",
-    signature: "ASCII::clean(string $str): string",
-    purpose: "Cleans up malformed UTF-8, and filters out problematic formatting bytes.",
+    signature: "ASCII::clean(string $str, bool $normalize_whitespace = true, bool $keep_non_breaking_space = false, bool $normalize_msword = true, bool $remove_invisible_characters = true, bool $remove_invalid_utf8 = true): string",
+    purpose: "Removes malformed UTF-8 sequences by default and optionally normalizes whitespace, MS Word typography, and invisible characters.",
     parameters: [
-      { name: "$str", type: "string", desc: "Input string with potentially corrupted UTF-8 codepoints." }
+      { name: "$str", type: "string", desc: "Input string with potentially corrupted UTF-8 codepoints." },
+      { name: "$normalize_whitespace", type: "bool", desc: "Whether to normalize whitespace characters." },
+      { name: "$keep_non_breaking_space", type: "bool", desc: "Keep or convert non-breaking spaces." },
+      { name: "$normalize_msword", type: "bool", desc: "Whether to normalize MS Word typography characters." },
+      { name: "$remove_invisible_characters", type: "bool", desc: "Whether to purge unprintable/invisible characters." },
+      { name: "$remove_invalid_utf8", type: "bool", desc: "Whether to clean invalid UTF-8 byte sequences." }
     ]
   },
   {
     name: "normalize_msword",
     signature: "ASCII::normalize_msword(string $str): string",
-    purpose: "Converts copy-pasted MS Word quotes, curly braces, and typographic marks to standard plain characters.",
+    purpose: "Converts copy-pasted MS Word smart quotes, ellipses, dashes, and other typographic characters to standard plain characters.",
     parameters: [
       { name: "$str", type: "string", desc: "The text block to normalize." }
     ]
@@ -176,7 +181,7 @@ const API_REFERENCE: ApiReferenceRow[] = [
   {
     name: "remove_invisible_characters",
     signature: "ASCII::remove_invisible_characters(string $str, bool $url_encoded = false, string $replacement = '', bool $keep_basic_control_characters = true): string",
-    purpose: "Finds and strips hidden Unicode control characters, null bytes, and format indicators.",
+    purpose: "Removes null bytes and selected ASCII control characters by default. Pass $keep_basic_control_characters = false for broader Unicode control and format-character cleanup, and $url_encoded = true to process encoded control bytes such as %00.",
     parameters: [
       { name: "$str", type: "string", desc: "Input string." },
       { name: "$url_encoded", type: "bool", desc: "If true, handles double-encoded url characters." },
@@ -187,17 +192,20 @@ const API_REFERENCE: ApiReferenceRow[] = [
   {
     name: "is_ascii",
     signature: "ASCII::is_ascii(string $str): bool",
-    purpose: "Performs high-speed verification to assert if the target string consists purely of valid ASCII.",
+    purpose: "Checks whether the string contains only 7-bit ASCII bytes.",
     parameters: [
       { name: "$str", type: "string", desc: "String to verify." }
     ]
   },
   {
     name: "normalize_whitespace",
-    signature: "ASCII::normalize_whitespace(string $str): string",
+    signature: "ASCII::normalize_whitespace(string $str, bool $keepNonBreakingSpace = false, bool $keepBidiUnicodeControls = false, bool $normalize_control_characters = false): string",
     purpose: "Normalizes known typographic whitespace characters to regular standard spaces.",
     parameters: [
-      { name: "$str", type: "string", desc: "Input string containing non-standard or mixed spacing elements." }
+      { name: "$str", type: "string", desc: "Input string containing non-standard or mixed spacing elements." },
+      { name: "$keepNonBreakingSpace", type: "bool", desc: "Whether to keep non-breaking spaces untouched." },
+      { name: "$keepBidiUnicodeControls", type: "bool", desc: "Whether to keep bidirectional text control characters." },
+      { name: "$normalize_control_characters", type: "bool", desc: "Whether to normalize other spacing control characters." }
     ]
   }
 ];
@@ -604,7 +612,7 @@ export default function App() {
           <div className="lg:col-span-6 space-y-6">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-mono font-semibold">
               <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
-              <span>PHP &gt;= 7.1 Compatible</span>
+              <span>Requires PHP &gt;= 7.1</span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl font-sans font-extrabold tracking-tight text-slate-900 leading-[1.15]">
@@ -633,7 +641,7 @@ export default function App() {
                   id="copy-composer-cmd"
                 >
                   {copiedKey === 'composer' ? (
-                    <Check className="w-4 h-4 text-emerald-600" />
+                     <Check className="w-4 h-4 text-emerald-600" />
                   ) : (
                     <Copy className="w-4 h-4" />
                   )}
@@ -645,7 +653,7 @@ export default function App() {
             <div className="grid grid-cols-2 gap-4 max-w-sm pt-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                <span>No runtime dependencies</span>
+                <span>No runtime package dependencies</span>
               </div>
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -670,7 +678,7 @@ export default function App() {
                   <div className="w-3 h-3 rounded-full bg-slate-300" />
                   <div className="w-3 h-3 rounded-full bg-slate-300" />
                   <div className="w-3 h-3 rounded-full bg-slate-300" />
-                  <span className="pl-2 font-mono text-xs text-slate-400 font-medium">language-awareness.php</span>
+                  <span className="pl-2 font-mono text-xs text-slate-400 font-medium">example.php</span>
                 </div>
                 <span className="font-mono text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                   Core Example
@@ -745,7 +753,7 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
               </div>
               <h3 className="text-base font-bold text-slate-900">Language-Specific Replacements</h3>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Generic accent stripping is not always enough. German <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ä</code>, <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ö</code>, <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ü</code>, and <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ß</code> need different output than a simple English fallback. Language-specific replacement rules are critical for proper pronunciations.
+                Generic accent stripping is not always enough. German <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ä</code>, <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ö</code>, <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ü</code>, and <code className="font-mono text-xs text-indigo-600 bg-slate-50 px-1 rounded">ß</code> need different output than a simple English fallback. Language-specific replacement rules are useful for familiar language-specific spellings.
               </p>
             </div>
 
@@ -756,7 +764,7 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
               </div>
               <h3 className="text-base font-bold text-slate-900">Security-Conscious Cleanup</h3>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Portable ASCII includes helpers for malformed UTF-8 cleanup, invisible/control character removal, whitespace normalization, and MS Word typography normalization. Use these helpers before downstream validation, indexing, slug creation, or legacy-system export to prevent bypasses.
+                Portable ASCII includes helpers for malformed UTF-8 cleanup, invisible/control character removal, whitespace normalization, and MS Word typography normalization. Normalize input into a canonical form before applying domain-specific validation. These helpers can reduce ambiguity caused by malformed UTF-8, unusual whitespace, typography, and control characters, but they do not make untrusted input safe for a particular output context.
               </p>
               <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 italic leading-relaxed">
                 * Note: These helpers are useful before validation, indexing, slug creation, and legacy export. They do not replace context-specific escaping, authorization, SQL parameter binding, or HTML sanitization.
@@ -775,7 +783,7 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
             Common String Operations
           </h2>
           <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-            A small, dependency-free library designed to run on plain PHP. Explore how each helper handles complex inputs securely.
+            A small, dependency-free library designed to run on plain PHP. Explore how each helper normalizes complex inputs predictably.
           </p>
         </div>
 
@@ -829,19 +837,6 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">
                       {COMMON_OPERATIONS[activeTab].methodName}
                     </h3>
-                    <motion.span
-                      key={`badge-${activeTab}`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.25, ease: "easeOut" }}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold font-mono tracking-wide uppercase bg-emerald-50 text-emerald-700 border border-emerald-100/80"
-                    >
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                      </span>
-                      Loaded
-                    </motion.span>
                   </div>
                   <p className="text-xs text-slate-600 leading-normal max-w-xl">
                     {COMMON_OPERATIONS[activeTab].description}
@@ -885,13 +880,13 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
             <div className="lg:col-span-5 space-y-4">
               <div className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono font-bold text-[10px] px-2.5 py-1 rounded-md">
                 <Globe className="w-3.5 h-3.5 text-indigo-600" />
-                <span>ACCENT VARIATION BY COUNTRY</span>
+                <span>LANGUAGE- AND LOCALE-SPECIFIC REPLACEMENTS</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">
-                Accents vary by geographic language.
+                Transliteration rules vary by language and locale.
               </h2>
               <p className="text-sm text-slate-600 leading-relaxed">
-                Blindly stripping accents converts letters destructively and ruins local search indexes. Portable ASCII uses native, context-based lookups. The German vowels <code className="font-mono text-xs bg-slate-200/60 px-1 text-slate-900 rounded">ä, ö, ü</code> map to <code className="font-mono text-xs text-indigo-600 font-semibold">ae, oe, ue</code>, whereas English standard systems simplify them flatly to <code className="font-mono text-xs bg-slate-200/60 px-1 text-slate-900 rounded">a, o, u</code>.
+                Blindly stripping accents can reduce search quality and create inconsistent index keys. Portable ASCII uses deterministic language-specific replacement maps. The German vowels <code className="font-mono text-xs bg-slate-200/60 px-1 text-slate-900 rounded">ä, ö, and ü</code> map to <code className="font-mono text-xs text-indigo-600 font-semibold">ae, oe, and ue</code>, whereas the English fallback usually reduces them to a, o, and u.
               </p>
               
               <div className="space-y-3 pt-2">
@@ -912,8 +907,8 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
                 <div className="flex items-start gap-3">
                   <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-mono font-bold text-xs flex items-center justify-center mt-0.5">tr</div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900">Turkish Accent Preservation</h4>
-                    <p className="text-xs text-slate-500 font-mono">Respects dotless-i and distinct consonant transforms</p>
+                    <h4 className="text-xs font-bold text-slate-900">Turkish-Specific Replacements</h4>
+                    <p className="text-xs text-slate-500 font-mono">Handles dotted and dotless i together with language-specific consonant mappings.</p>
                   </div>
                 </div>
               </div>
@@ -932,40 +927,34 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500 bg-slate-50/50">
                       <th className="p-3 font-bold">Input String</th>
-                      <th className="p-3 font-bold">Target Language</th>
-                      <th className="p-3 font-bold">Generic output</th>
-                      <th className="p-3 font-bold text-indigo-600">Portable ASCII</th>
+                      <th className="p-3 font-bold">Operation / Language Context</th>
+                      <th className="p-3 font-bold text-indigo-600">Portable ASCII Output</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     <tr className="hover:bg-slate-50/40">
                       <td className="p-3 font-semibold text-slate-900">Düsseldorf</td>
-                      <td className="p-3 text-slate-500">de (German)</td>
-                      <td className="p-3 text-red-500 line-through">Dusseldorf</td>
+                      <td className="p-3 text-slate-500">ASCII::to_ascii($str, 'de')</td>
                       <td className="p-3 text-emerald-600 font-bold">Duesseldorf</td>
                     </tr>
                     <tr className="hover:bg-slate-50/40">
                       <td className="p-3 font-semibold text-slate-900">Düsseldorf</td>
-                      <td className="p-3 text-slate-500">en (English)</td>
-                      <td className="p-3 text-slate-400">Dusseldorf</td>
+                      <td className="p-3 text-slate-500">ASCII::to_ascii($str, 'en')</td>
                       <td className="p-3 text-emerald-600 font-bold">Dusseldorf</td>
                     </tr>
                     <tr className="hover:bg-slate-50/40">
                       <td className="p-3 font-semibold text-slate-900">Fußgänger</td>
-                      <td className="p-3 text-slate-500">de (German)</td>
-                      <td className="p-3 text-red-500 line-through">Fussganger</td>
-                      <td className="p-3 text-emerald-600 font-bold">Fussgaenger</td>
+                      <td className="p-3 text-slate-500">ASCII::to_slugify($str, '-', 'de')</td>
+                      <td className="p-3 text-emerald-600 font-bold">fussgaenger</td>
                     </tr>
                     <tr className="hover:bg-slate-50/40">
                       <td className="p-3 font-semibold text-slate-900">déjà vu</td>
-                      <td className="p-3 text-slate-500">fr (French)</td>
-                      <td className="p-3 text-slate-400">deja vu</td>
+                      <td className="p-3 text-slate-500">ASCII::to_ascii($str, 'fr')</td>
                       <td className="p-3 text-emerald-600 font-bold">deja vu</td>
                     </tr>
                     <tr className="hover:bg-slate-50/40">
                       <td className="p-3 font-semibold text-slate-900">中文😀</td>
-                      <td className="p-3 text-slate-500">transliteration fallback</td>
-                      <td className="p-3 text-slate-400">??</td>
+                      <td className="p-3 text-slate-500">ASCII::to_transliterate($str)</td>
                       <td className="p-3 text-emerald-600 font-bold">Zhong Wen ?</td>
                     </tr>
                   </tbody>
@@ -991,10 +980,10 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
                 <span>PERFORMANCE REGRESSION SUITE</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-sans font-bold tracking-tight">
-                Designed for high throughput production loads.
+                Includes optimized fast paths and an opt-in microbenchmark suite for detecting substantial performance regressions.
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Portable ASCII includes optimized fast paths for standard plain ASCII strings. Memory-conscious internal caches prevent redundant lookup iterations on long loops. 
+                Portable ASCII includes optimized fast paths for standard plain ASCII strings. Internal caches reuse prepared lookup data across repeated calls.
               </p>
               
               <div className="pt-2">
@@ -1013,10 +1002,10 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
             {/* BAR PROGRESS CHARTS */}
             <div className="lg:col-span-6 bg-slate-950/60 backdrop-blur-sm p-6 rounded-xl border border-slate-800 space-y-4">
               <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider font-bold block">
-                Sourced Benchmark Profiles (Microseconds per Op)
+                Historical Benchmark Snapshot (Microseconds per Op)
               </span>
               <div className="text-[11px] text-slate-400 font-mono italic -mt-1 leading-tight">
-                PHP 8.3.30, Linux x86-64, median across sampled benchmark rounds (Run Date: 2026-04-17)
+                Commit: a283373, PHP 8.3.30, Linux x86-64, median across sampled benchmark rounds (Run Date: 2026-04-17). Note: The benchmark is explicitly opt-in and skipped unless the corresponding environment variable is set.
               </div>
 
               <div className="space-y-4 font-mono text-xs pt-2">
@@ -1062,7 +1051,7 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
               </div>
 
               <p className="text-[10px] text-slate-500 leading-normal">
-                * Sourced from checked-in performance test reports. Actual performance maps depend directly on local host hardware, container configurations, and PHP versions.
+                * Sourced from the checked-in historical performance report. Actual performance results depend on local hardware, operating system, container configuration, and PHP version.
               </p>
             </div>
           </div>
@@ -1146,19 +1135,19 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
             
             <div className="lg:col-span-5 space-y-4">
               <span className="font-mono text-xs text-indigo-600 font-bold bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded">
-                OBJECT-ORIENTED WRAPPER
+                OBJECT-ORIENTED VALUE OBJECT
               </span>
               <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">
-                Modern PHP 8.2+ Architecture Wrapper
+                Modern PHP 8.2+ Value Object Wrapper
               </h2>
               <p className="text-sm text-slate-600 leading-relaxed">
-                Integrate Portable ASCII into domain-driven architectures securely using modern PHP features. Wrapping static calls protects your core entities and provides clean typing boundaries.
+                Integrate Portable ASCII into domain-driven architectures using modern PHP features. Wrapping static calls creates a clean architectural boundary and provides well-defined typing constraints for your value objects.
               </p>
               
               <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
                 <h4 className="text-xs font-bold text-slate-800 font-mono">Usage in modern structures</h4>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Avoid invoking helper APIs raw inside controllers or database hooks. Encapsulate operations within robust Value Objects.
+                  When slug generation is part of your domain model, encapsulate the conversion and its validation in a dedicated Value Object. Keep conversion rules and validation close to the domain value they produce.
                 </p>
               </div>
             </div>
@@ -1167,7 +1156,7 @@ echo ASCII::to_slugify('Fußgänger Altstadt', '-', 'de');
             <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
               <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <span className="font-mono text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                  ArticleSlug.php — Domain Entity Sample (PHP 8.2+)
+                  ArticleSlug.php — PHP 8.2+ Value Object Example
                 </span>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               </div>
@@ -1181,26 +1170,36 @@ use voku\\helper\\ASCII;
 
 final readonly class ArticleSlug
 {
-    public function __construct(
+    private function __construct(
         public string $value,
-    ) {}
+    ) {
+    }
 
     public static function fromGermanTitle(string $title): self
     {
-        return new self(
-            ASCII::to_slugify($title, '-', 'de')
-        );
+        $value = ASCII::to_slugify($title, '-', 'de');
+
+        if ($value === '') {
+            throw new InvalidArgumentException(
+                'The title does not contain any slug-compatible characters.'
+            );
+        }
+
+        return new self($value);
     }
 }
 
-$slug = ArticleSlug::fromGermanTitle('Fußgängerübergänge in Düsseldorf');
+$slug = ArticleSlug::fromGermanTitle(
+    'Fußgängerübergänge in Düsseldorf'
+);
+
 echo $slug->value;
-// Output: "fussgaengeruebergaenge-in-duesseldorf"`}</pre>
+// fussgaengeruebergaenge-in-duesseldorf`}</pre>
               </div>
 
               <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-center">
                 <p className="text-[10px] text-slate-500 leading-normal">
-                  Requires PHP 8.2+ or higher due to native <code className="font-mono text-slate-800 bg-slate-200/50 px-1 rounded text-[9px]">readonly</code> class decorators.
+                  Requires PHP 8.2 or newer because it uses a native readonly class declaration.
                 </p>
               </div>
             </div>
@@ -1233,7 +1232,7 @@ echo $slug->value;
           </div>
 
           <div className="text-[10px] text-slate-600 font-mono pt-4">
-            © 2026 Portable ASCII. Clean codes, reliable strings.
+            © 2026 Portable ASCII. Clean code, reliable strings.
           </div>
         </div>
       </footer>
