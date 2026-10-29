@@ -19,8 +19,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - name: Generate initial lockfile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cache: npm
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Type-check
@@ -29,14 +28,3 @@ jobs:
         run: npm run build
       - name: Verify output
         run: test -f dist/index.html
-      - name: Export generated lockfile for review
-        run: |
-          node --input-type=commonjs - <<'NODE'
-          const fs = require('node:fs');
-          const encoded = fs.readFileSync('package-lock.json').toString('base64');
-          console.log('LOCKFILE_BASE64_BEGIN');
-          for (let i = 0; i < encoded.length; i += 1024) {
-            console.log('LOCKFILE_CHUNK_' + encoded.slice(i, i + 1024));
-          }
-          console.log('LOCKFILE_BASE64_END');
-          NODE
